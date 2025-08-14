@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>타이머</title>
+  <meta name="theme-color" content="#111111" />
+  <style>
+    :root{ --bg:#111111; --fg:#ffffff; --muted:#b7bcc4; --accent:#4caf50; --danger:#f44336; --warn:#ff9800; --edge:rgba(255,255,255,.12); --shadow:0 8px 24px rgba(0,0,0,.35); }
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Noto Sans KR,sans-serif;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color: rgba(0,0,0,0);} /* 탭 하이라이트 제거 */
+    *{-webkit-tap-highlight-color: rgba(0,0,0,0);} /* 일부 기기 전역 제거 */
+
+    /* Header: centered buttons, no main title */
+    .wrap{min-height:100%;display:flex;flex-direction:column}
+    header{position:sticky;top:0;z-index:10;backdrop-filter:saturate(140%) blur(8px);background:rgba(15,15,15,.6);border-bottom:1px solid var(--edge)}
+    .topbar{display:flex;align-items:center;justify-content:center;padding:10px 12px}
+    .mode-buttons{display:flex;gap:10px;margin:0 auto;justify-content:center;width:fit-content}
+    .mode-buttons button{border:0;background:#1a1a1a;color:var(--fg);padding:10px 16px;border-radius:10px;font-weight:700;border:1px solid var(--edge)}
+    .mode-buttons button.active{background:#262626}
+    .mode-buttons button:active{filter:brightness(.9)}
+
+    main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:18px}
+    .timer{font-variant-numeric:tabular-nums;letter-spacing:1px;font-weight:800;text-align:center}
+    .timer.big{font-size:16vw}
+    .timer.sub{font-size:4.5vw;color:var(--muted)}
+    .progress{width:100%;max-width:580px;height:12px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--edge);overflow:hidden}
+    .progress > .bar{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),#86efac)}
+
+    .dock{position:sticky;bottom:0;left:0;right:0;background:rgba(15,15,15,.85);backdrop-filter:saturate(140%) blur(8px);border-top:1px solid var(--edge)}
+    .ctrls{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 16px;max-width:700px;margin:0 auto}
+    .btn{border:0;border-radius:14px;padding:14px 16px;font-size:5.2vw;line-height:1.1;box-shadow:var(--shadow);color:#fff}
+    .btn.primary{background:var(--accent)}
+    .btn.stop{background:var(--danger)}
+    .btn.warn{background:var(--warn);color:#111}
+    .btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--edge);box-shadow:none}
+    @media(min-width:560px){ .btn{font-size:20px} }
+
+    .row{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap}
+    .pill{font-size:12px;color:var(--muted);border:1px solid var(--edge);padding:4px 8px;border-radius:999px}
+    .input{display:flex;align-items:center;gap:8px;border:1px solid var(--edge);padding:8px 10px;border-radius:12px;background:#1b1b1b}
+    .input input{width:3.5em;background:transparent;border:0;color:var(--fg);font-size:18px;text-align:center}
+    .chip{border:1px solid var(--edge);padding:8px 10px;border-radius:12px;background:#1b1b1b;color:var(--fg)}
+
+    .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:rgba(0,0,0,.75);border:1px solid var(--edge);color:#fff;padding:10px 14px;border-radius:12px;opacity:0;transition:opacity .2s, transform .2s;pointer-events:none}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="topbar">
+        <div class="mode-buttons">
+          <button id="tab-sw" class="active">스톱워치</button>
+          <button id="tab-cd">타이머</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <div class="pill" id="status">대기 중</div>
+      <div class="timer big" id="display">00:00:00.00</div>
+      <div class="timer sub" id="sub"></div>
+      <div class="pill" id="last-lap" style="display:none"></div>
+
+      <div id="cd-panel" style="display:none;max-width:640px;width:100%">
+        <div class="row" aria-label="타이머 설정">
+          <span class="pill">시간</span>
+          <div class="input"><input id="h" type="number" min="0" max="99" value="0">h</div>
+          <div class="input"><input id="m" type="number" min="0" max="59" value="5">m</div>
+          <div class="input"><input id="s" type="number" min="0" max="59" value="0">s</div>
+          <button class="chip" id="add1">+1분</button>
+          <button class="chip" id="sub10">-10초</button>
+        </div>
+        <div class="progress" style="margin-top:14px"><div class="bar" id="bar"></div></div>
+      </div>
+
+      <div class="row">
+        <button class="chip" id="wake">화면 항상 켜기: 꺼짐</button>
+        <button class="chip" id="beep">알림음: 켜짐</button>
+      </div>
+    </main>
+
+    <div class="dock">
+      <div class="ctrls">
+        <button id="toggle" class="btn primary">시작</button>
+        <button id="reset" class="btn warn">리셋</button>
+        <button id="lap" class="btn ghost" style="grid-column:1 / span 2;display:none">랩 추가</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const $=s=>document.querySelector(s); const pad=(n,l=2)=>String(Math.floor(Math.abs(n))).padStart(l,'0');
+    const toast=(m)=>{const t=$('#toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1400)};
+    const vibrate = (p)=>{ if(navigator.vibrate) navigator.vibrate(p); };
+    const fmt = (ms,ms2=true)=>{ ms=Math.max(0,Math.round(ms)); const h=Math.floor(ms/3600000); ms%=3600000; const m=Math.floor(ms/60000); ms%=60000; const s=Math.floor(ms/1000); const ms2d=Math.floor((ms%1000)/10); return ms2? `${pad(h)}:${pad(m)}:${pad(s)}.${pad(ms2d)}`: `${pad(h)}:${pad(m)}:${pad(s)}` };
+
+    // Sound toggle with visible label
+    const Sound=(()=>{ let ctx; let enabled=true; function ensure(){ if(!ctx) ctx=new (window.AudioContext||window.webkitAudioContext)(); return ctx; }
+      function beep(){ if(!enabled) return; const c=ensure(); const t=c.currentTime; [660,880,660].forEach((f,i)=>{ const o=c.createOscillator(); const g=c.createGain(); o.type='sine'; o.frequency.value=f; g.gain.value=0.15; o.connect(g).connect(c.destination); o.start(t+i*0.12); o.stop(t+i*0.12+0.1); }); }
+      return { toggle(){ enabled=!enabled; $('#beep').textContent = `알림음: ${enabled?'켜짐':'꺼짐'}`; toast(enabled?'🔊 소리 켜짐':'🔇 소리 꺼짐'); }, play:beep, get enabled(){return enabled;} };
+    })();
+
+    // Wake Lock with better messaging and re-acquire on visibility change
+    const Wake = (()=>{ let lock=null; async function request(){ try{ if('wakeLock' in navigator){ lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release',()=>{ $('#wake').textContent='화면 항상 켜기: 꺼짐'; }); $('#wake').textContent='화면 항상 켜기: 켜짐'; }
+          else { toast('이 브라우저는 Wake Lock을 지원하지 않아요'); $('#wake').textContent='화면 항상 켜기: 미지원'; }
+        }catch(e){ toast('Wake Lock 요청 실패 (HTTPS 필요할 수 있음)'); $('#wake').textContent='화면 항상 켜기: 꺼짐'; }
+      }
+      async function toggle(){ if(lock){ await lock.release(); lock=null; $('#wake').textContent='화면 항상 켜기: 꺼짐'; toast('화면 자동 꺼짐 허용'); } else { await request(); if(lock) toast('화면 항상 켜짐 활성화'); } }
+      document.addEventListener('visibilitychange', async ()=>{ if(document.visibilityState==='visible' && lock){ try{ await request(); }catch{} } });
+      return { toggle };
+    })();
+
+    const App={ mode:'sw', running:false, start:0, anchor:0, req:0, laps:[], total:5*60*1000 };
+
+    function setStatus(t){ $('#status').textContent=t; }
+    function setDigits(main, sub=''){ $('#display').textContent=main; $('#sub').textContent=sub; document.title = App.running? `⏱️ ${sub||main}` : '타이머'; }
+
+    // Stopwatch
+    function swRender(){ setDigits(fmt(App.anchor,true)); }
+    function swStart(){ if(App.running) return; App.start=performance.now()-App.anchor; App.running=true; setStatus('스톱워치 실행 중'); loop(); renderCtrls(); }
+    function swPause(){ if(!App.running) return; App.anchor=performance.now()-App.start; App.running=false; cancelAnimationFrame(App.req); setStatus('일시정지'); renderCtrls(); }
+    function swReset(){ App.running=false; cancelAnimationFrame(App.req); App.anchor=0; App.laps=[]; $('#last-lap').style.display='none'; setStatus('초기화됨'); swRender(); renderCtrls(); }
+    function swLap(){ if(!App.running) return; const now=performance.now()-App.start; const last=App.laps.length? App.laps[App.laps.length-1] : 0; App.laps.push(now); const txt=`마지막 랩 ${App.laps.length}: ${fmt(now)} (+${fmt(now-last)})`; $('#last-lap').textContent=txt; $('#last-lap').style.display='inline-block'; toast('랩 저장'); vibrate([15,30,15]); }
+
+    // Timer (countdown)
+    function getCdMs(){ const h=parseInt($('#h').value||0); const m=parseInt($('#m').value||0); const s=parseInt($('#s').value||0); return ((h*60+m)*60+s)*1000; }
+    function cdRender(rem){ const total=App.total; const r=rem??App.anchor; setDigits(fmt(r,true), fmt(r,false)); const p=100 - Math.min(100, Math.max(0,(r/total)*100)); $('#bar').style.width=`${p}%`; }
+    function cdStart(){ if(App.running) return; App.total = Math.max(1000, getCdMs() || App.total); App.start=performance.now(); App.anchor=App.total; App.running=true; setStatus('타이머 실행 중'); loop(); renderCtrls(); }
+    function cdPause(){ if(!App.running) return; App.anchor=Math.max(0, App.anchor - (performance.now()-App.start)); App.running=false; cancelAnimationFrame(App.req); setStatus('일시정지'); renderCtrls(); }
+    function cdReset(){ App.running=false; cancelAnimationFrame(App.req); const ms=getCdMs(); if(ms>0) App.total=ms; App.anchor=App.total; cdRender(App.anchor); setStatus('초기화됨'); renderCtrls(); }
+    async function cdDone(){ setStatus('완료'); Sound.play(); vibrate([50,60,50,150]); toast('⏰ 완료!'); }
+
+    // Main loop
+    function loop(){ cancelAnimationFrame(App.req); const now=performance.now();
+      if(App.mode==='sw'){
+        const el=now-App.start; setDigits(fmt(el,true), fmt(el,false));
+      }else{
+        const rem=Math.max(0, App.anchor - (now-App.start)); cdRender(rem); if(rem<=0){ App.running=false; cancelAnimationFrame(App.req); cdDone(); return; }
+      }
+      App.req=requestAnimationFrame(loop);
+    }
+
+    // Tabs & Controls
+    function switchTab(m){ if(App.mode===m) return; App.mode=m; App.running=false; cancelAnimationFrame(App.req);
+      $('#tab-sw').classList.toggle('active', m==='sw');
+      $('#tab-cd').classList.toggle('active', m==='cd');
+      $('#cd-panel').style.display = m==='cd'? 'block':'none';
+      setStatus(m==='sw'? '스톱워치 대기 중':'타이머 대기 중');
+      setDigits('00:00:00.00','');
+      if(m==='cd'){ App.anchor = App.total; cdRender(App.anchor);} else { $('#last-lap').style.display = App.laps.length? 'inline-block':'none'; }
+      renderCtrls();
+    }
+    function renderCtrls(){ const t=$('#toggle'), r=$('#reset'), l=$('#lap');
+      if(App.mode==='sw'){
+        l.style.display='block'; t.textContent = App.running? '일시정지':'시작'; t.className = 'btn ' + (App.running? 'stop' : 'primary'); r.textContent='리셋'; r.className='btn warn';
+      }else{
+        l.style.display='none'; t.textContent = App.running? '일시정지':'시작'; t.className='btn ' + (App.running? 'stop' : 'primary'); r.textContent='리셋'; r.className='btn warn';
+      }
+    }
+
+    // Events
+    $('#tab-sw').onclick=()=>switchTab('sw');
+    $('#tab-cd').onclick=()=>switchTab('cd');
+    $('#toggle').onclick=()=>{ if(App.mode==='sw'){ App.running? swPause(): swStart(); } else { App.running? cdPause(): cdStart(); } };
+    $('#reset').onclick=()=>{ App.mode==='sw'? swReset(): cdReset(); };
+    $('#lap').onclick=()=> swLap();
+    $('#add1').onclick=()=>{ const ms= Math.max(0, getCdMs()+60000); const h=Math.floor(ms/3600000); const m=Math.floor((ms%3600000)/60000); const s=Math.floor((ms%60000)/1000); $('#h').value=h; $('#m').value=m; $('#s').value=s; App.total=ms; cdRender(ms); };
+    $('#sub10').onclick=()=>{ const ms= Math.max(0, getCdMs()-10000); const h=Math.floor(ms/3600000); const m=Math.floor((ms%3600000)/60000); const s=Math.floor((ms%60000)/1000); $('#h').value=h; $('#m').value=m; $('#s').value=s; App.total=ms; cdRender(ms); };
+    $('#wake').onclick = ()=> Wake.toggle();
+    $('#beep').onclick = ()=> Sound.toggle();
+
+    (function init(){ switchTab('sw'); swRender(); })();
+  </script>
+</body>
+</html>
